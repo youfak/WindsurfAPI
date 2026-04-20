@@ -148,7 +148,13 @@ export function buildRawGetChatMessageRequest(apiKey, messages, modelEnum, model
   // Field 1: Metadata
   parts.push(writeMessageField(1, buildMetadata(apiKey)));
 
-  // Field 2: repeated ChatMessage (skip system, handled separately)
+  // Field 2: repeated ChatMessage (skip system, handled separately).
+  // Windsurf's legacy RawGetChatMessage backend rejects role=tool and
+  // doesn't know about assistant tool_calls. Degrade both to plain text
+  // so multi-turn conversations that carry tool history still flow
+  // through without triggering "proto: cannot parse invalid wire-format
+  // data" upstream. Cascade models are unaffected — they use a different
+  // endpoint (SendUserCascadeMessage) with full tool support.
   let systemPrompt = '';
   for (const msg of messages) {
     if (msg.role === 'system') {
@@ -158,16 +164,39 @@ export function buildRawGetChatMessageRequest(apiKey, messages, modelEnum, model
     }
 
     let source;
-    switch (msg.role) {
-      case 'user': source = SOURCE.USER; break;
-      case 'assistant': source = SOURCE.ASSISTANT; break;
-      case 'tool': source = SOURCE.TOOL; break;
-      default: source = SOURCE.USER;
-    }
-
-    const text = typeof msg.content === 'string' ? msg.content
+    let text;
+    const baseText = typeof msg.content === 'string' ? msg.content
       : Array.isArray(msg.content) ? msg.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
-      : JSON.stringify(msg.content);
+      : msg.content == null ? '' : JSON.stringify(msg.content);
+
+    switch (msg.role) {
+      case 'user':
+        source = SOURCE.USER;
+        text = baseText;
+        break;
+      case 'assistant':
+        source = SOURCE.ASSISTANT;
+        // If the assistant previously called tools, append the call descriptions
+        // so the model sees its own prior tool usage as text. Empty string OK.
+        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+          const tcLines = msg.tool_calls.map(tc =>
+            `[called tool ${tc.function?.name || 'unknown'} with ${tc.function?.arguments || '{}'}]`
+          ).join('\n');
+          text = baseText ? `${baseText}\n${tcLines}` : tcLines;
+        } else {
+          text = baseText;
+        }
+        break;
+      case 'tool':
+        // Rewrite tool-result turn as a synthetic user utterance so the
+        // server-side schema accepts it.
+        source = SOURCE.USER;
+        text = `[tool result${msg.tool_call_id ? ` for ${msg.tool_call_id}` : ''}]: ${baseText}`;
+        break;
+      default:
+        source = SOURCE.USER;
+        text = baseText;
+    }
 
     parts.push(writeMessageField(2, buildChatMessage(text, source, conversationId)));
   }

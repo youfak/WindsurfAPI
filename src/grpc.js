@@ -155,8 +155,16 @@ export function grpcUnary(port, csrfToken, path, body, timeout = 30000) {
         done(reject, new Error(msg));
         return;
       }
+      // A unary response is "usually" one frame, but nothing in the gRPC
+      // spec or nghttp2 prevents the server from splitting across frames.
+      // stripGrpcFrame() only returns the first frame — use
+      // extractGrpcFrames() + concat so a chunked proto isn't silently
+      // truncated. Falls back to stripGrpcFrame if extract finds nothing
+      // (preserves old behavior for short / malformed responses).
       const full = Buffer.concat(chunks);
-      done(resolve, stripGrpcFrame(full));
+      const frames = extractGrpcFrames(full);
+      const payload = frames.length > 0 ? Buffer.concat(frames) : stripGrpcFrame(full);
+      done(resolve, payload);
     });
 
     req.on('error', (err) => {

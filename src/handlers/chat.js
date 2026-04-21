@@ -801,17 +801,29 @@ function streamResponse(id, created, model, modelKey, messages, cascadeMessages,
         log.error('Stream error after retries:', lastErr?.message);
         recordRequest(model, false, Date.now() - startTime, currentApiKey);
         try {
-          if (!rolePrinted) {
-            send({ id, object: 'chat.completion.chunk', created, model,
-              choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
-          }
-          // Check if failure is due to all accounts being rate-limited
           const rl = isAllRateLimited(modelKey);
           const errMsg = rl.allLimited
             ? `${model} 所有账号均已达速率限制，请 ${Math.ceil(rl.retryAfterMs / 1000)} 秒后重试`
             : sanitizeText(lastErr?.message || 'no accounts');
-          send({ id, object: 'chat.completion.chunk', created, model,
-            choices: [{ index: 0, delta: { content: `\n[Error: ${errMsg}]` }, finish_reason: 'stop' }] });
+
+          if (hadSuccess) {
+            // We already streamed real assistant content. Injecting
+            // "[Error: ...]" as a content delta here would corrupt the
+            // assistant message (clients display it verbatim as model
+            // output). Close cleanly with a plain stop — the caller saw
+            // whatever partial content we produced. Error details only
+            // go to the server log.
+            send({ id, object: 'chat.completion.chunk', created, model,
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+            log.warn(`Stream: partial response delivered then failed (${errMsg})`);
+          } else {
+            if (!rolePrinted) {
+              send({ id, object: 'chat.completion.chunk', created, model,
+                choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
+            }
+            send({ id, object: 'chat.completion.chunk', created, model,
+              choices: [{ index: 0, delta: { content: `\n[Error: ${errMsg}]` }, finish_reason: 'stop' }] });
+          }
           res.write('data: [DONE]\n\n');
         } catch {}
         if (!res.writableEnded) res.end();

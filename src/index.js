@@ -1,6 +1,6 @@
 // Logger must be imported first to patch log functions before other modules use them
 import './dashboard/logger.js';
-import { initAuth, isAuthenticated } from './auth.js';
+import { initAuth, isAuthenticated, saveAccountsSync } from './auth.js';
 import { startLanguageServer, waitForReady, isLanguageServerRunning, stopLanguageServer } from './langserver.js';
 import { startServer } from './server.js';
 import { config, log } from './config.js';
@@ -79,12 +79,17 @@ async function main() {
     log.info(`${signal} received — draining ${inflight} in-flight requests (up to 30s)...`);
     if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
     server.close(() => {
-      log.info('HTTP server closed, stopping language server');
+      log.info('HTTP server closed, flushing state + stopping language server');
+      // Persist any in-memory account updates (capability probes, error
+      // counts, rate-limit cooldowns) before PM2 restarts us. Debounced
+      // saves would otherwise be killed by the exit below.
+      try { saveAccountsSync(); } catch {}
       try { stopLanguageServer(); } catch {}
       process.exit(0);
     });
     setTimeout(() => {
       log.warn('Drain timeout, forcing exit');
+      try { saveAccountsSync(); } catch {}
       try { stopLanguageServer(); } catch {}
       process.exit(0);
     }, 30_000);

@@ -94,7 +94,7 @@ export async function ensureLs(proxy = null) {
 
   const promise = (async () => {
     const isDefault = key === 'default';
-    const port = isDefault ? DEFAULT_PORT : _nextPort++;
+    let port = isDefault ? DEFAULT_PORT : _nextPort++;
 
     // If something is already listening on the default port (e.g. leftover
     // from a previous crashed run), adopt it rather than fight for the port.
@@ -107,6 +107,20 @@ export async function ensureLs(proxy = null) {
       };
       _pool.set(key, entry);
       return entry;
+    }
+
+    // Non-default ports: skip anything already bound. A PM2 restart can
+    // race the old LS's TCP teardown — if we spawn while the dying
+    // process still owns 42101, waitPortReady would succeed by connecting
+    // to the corpse and every request would hang. Advance _nextPort until
+    // we find a free slot.
+    if (!isDefault) {
+      let tries = 0;
+      while (await isPortInUse(port)) {
+        if (++tries > 50) throw new Error(`No free port for LS in range starting ${DEFAULT_PORT + 1}`);
+        log.debug(`LS port ${port} busy, advancing`);
+        port = _nextPort++;
+      }
     }
 
     const dataDir = `/opt/windsurf/data/${key}`;

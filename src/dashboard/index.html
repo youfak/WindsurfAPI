@@ -2133,7 +2133,7 @@ const App = {
       const blockedCount = (a.blockedModels || []).length;
       const availCount = tierModels.length - blockedCount;
       const capsHtml = tierModels.length
-        ? `<button class="btn btn-ghost btn-xs" style="min-width:96px" onclick="App.openBlockedModal('${this.esc(a.id)}')" title="编辑该账号可用模型">
+        ? `<button class="btn btn-ghost btn-xs" style="min-width:96px" onclick="App.openBlockedModal('${this.escJsAttr(a.id)}')" title="编辑该账号可用模型">
              <span style="color:var(--success,#10b981);font-weight:600">${availCount}</span>
              <span style="color:var(--text-dim)">/${tierModels.length}</span>
              ${blockedCount > 0 ? `<span class="badge warn" style="margin-left:4px">-${blockedCount}</span>` : ''}
@@ -2197,7 +2197,7 @@ const App = {
         <td>${this.esc(a.email)}</td>
         <td>
           <div style="display:flex;flex-direction:column;gap:2px">
-            <span class="tier ${this.esc(tier)}" style="cursor:pointer" title="${this.esc(tierTooltip)}" onclick="App.overrideTier('${this.esc(a.id)}','${this.esc(tier)}')">${tierLabel[tier] || this.esc(tier)}${a.tierManual ? ' ✎' : ''}</span>
+            <span class="tier ${this.esc(tier)}" style="cursor:pointer" title="${this.esc(tierTooltip)}" onclick="App.overrideTier('${this.escJsAttr(a.id)}','${this.escJsAttr(tier)}')">${tierLabel[tier] || this.esc(tier)}${a.tierManual ? ' ✎' : ''}</span>
             ${tierSubline ? `<span class="text-xs text-dim" style="font-size:10px">${this.esc(tierSubline)}</span>` : ''}
           </div>
         </td>
@@ -2208,17 +2208,17 @@ const App = {
         <td style="color:${a.errorCount > 0 ? 'var(--error)' : 'inherit'}">${a.errorCount}</td>
         <td class="text-sm nowrap">${a.lastUsed ? new Date(a.lastUsed).toLocaleString() : '-'}</td>
         <td class="nowrap">
-          <code style="cursor:pointer" title="点击复制" onclick="App.copyKey('${this.esc(a.apiKey)}')">${a.keyPrefix}</code>
+          <code style="cursor:pointer" title="点击复制" onclick="App.copyKey('${this.escJsAttr(a.apiKey)}')">${a.keyPrefix}</code>
         </td>
         <td class="nowrap">
           <div class="btn-group">
-            <button class="btn btn-ghost btn-xs" onclick="App.probeAccount('${this.esc(a.id)}')" title="探测能力">探测</button>
-            <button class="btn btn-ghost btn-xs" onclick="App.refreshCredits('${this.esc(a.id)}')" title="刷新余额">余额</button>
+            <button class="btn btn-ghost btn-xs" onclick="App.probeAccount('${this.escJsAttr(a.id)}')" title="探测能力">探测</button>
+            <button class="btn btn-ghost btn-xs" onclick="App.refreshCredits('${this.escJsAttr(a.id)}')" title="刷新余额">余额</button>
             ${a.status === 'active'
-              ? `<button class="btn btn-ghost btn-xs" onclick="App.toggleAccount('${this.esc(a.id)}','disabled')">停用</button>`
-              : `<button class="btn btn-success btn-xs" onclick="App.toggleAccount('${this.esc(a.id)}','active')">启用</button>`}
-            <button class="btn btn-ghost btn-xs" onclick="App.resetErrors('${this.esc(a.id)}')">重置</button>
-            <button class="btn btn-ghost btn-xs" style="color:var(--error)" onclick="App.deleteAccount('${this.esc(a.id)}')">删除</button>
+              ? `<button class="btn btn-ghost btn-xs" onclick="App.toggleAccount('${this.escJsAttr(a.id)}','disabled')">停用</button>`
+              : `<button class="btn btn-success btn-xs" onclick="App.toggleAccount('${this.escJsAttr(a.id)}','active')">启用</button>`}
+            <button class="btn btn-ghost btn-xs" onclick="App.resetErrors('${this.escJsAttr(a.id)}')">重置</button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--error)" onclick="App.deleteAccount('${this.escJsAttr(a.id)}')">删除</button>
           </div>
         </td>
       </tr>`;
@@ -2494,7 +2494,7 @@ const App = {
     if (current.length > 0) {
       document.getElementById('model-list-current').innerHTML = `
         <div class="text-xs text-muted" style="margin-bottom:6px">当前清单 (${current.length})</div>
-        <div class="model-chips">${current.map(m => `<span class="model-chip selected">${this.esc(m)}<span class="remove" onclick="App.removeModelFromList('${this.esc(m)}')">×</span></span>`).join('')}</div>`;
+        <div class="model-chips">${current.map(m => `<span class="model-chip selected">${this.esc(m)}<span class="remove" onclick="App.removeModelFromList('${this.escJsAttr(m)}')">×</span></span>`).join('')}</div>`;
     } else {
       document.getElementById('model-list-current').innerHTML = '<div class="text-xs text-dim">清单为空</div>';
     }
@@ -2524,7 +2524,7 @@ const App = {
         <div class="provider-label">${prov}</div>
         <div class="model-chips">${models.map(m => {
           const inList = list.includes(m.id);
-          return `<span class="model-chip ${inList ? 'selected' : ''}" onclick="App.toggleModelInList('${this.esc(m.id)}')">${this.esc(m.name)}</span>`;
+          return `<span class="model-chip ${inList ? 'selected' : ''}" onclick="App.toggleModelInList('${this.escJsAttr(m.id)}')">${this.esc(m.name)}</span>`;
         }).join('')}</div>
       </div>
     `).join('') || '<div class="text-sm text-dim">没有符合的模型</div>';
@@ -2563,11 +2563,17 @@ const App = {
       document.getElementById('proxy-host').value = (d.global.host || '').replace(/:\d+$/, '');
       document.getElementById('proxy-port').value = d.global.port || '';
       document.getElementById('proxy-user').value = d.global.username || '';
-      document.getElementById('proxy-pass').value = d.global.password || '';
+      // Password is never sent down now — show a placeholder when one is
+      // stored so the user knows leaving the field blank keeps it.
+      document.getElementById('proxy-pass').value = '';
+      document.getElementById('proxy-pass').placeholder = d.global.hasPassword ? '已保存（留空保持原值）' : '代理认证密码';
+      this._globalProxyHasPassword = !!d.global.hasPassword;
       const h = (d.global.host || '').replace(/:\d+$/, '');
       const authInfo = d.global.username ? `（认证：${d.global.username}）` : '';
       document.getElementById('proxy-current').textContent = `当前：${d.global.type}://${h}:${d.global.port}${authInfo}`;
     } else {
+      this._globalProxyHasPassword = false;
+      document.getElementById('proxy-pass').placeholder = '代理认证密码';
       document.getElementById('proxy-current').textContent = '未配置全局代理';
     }
     const accts = await this.api('GET', '/accounts');
@@ -2580,8 +2586,8 @@ const App = {
         <td>${p ? `<code>${this.esc(p.type)}://${p.username ? this.esc(p.username) + '@' : ''}${this.esc(p.host)}:${this.esc(String(p.port))}</code>` : '<span class="text-sm text-dim">无（使用全局）</span>'}</td>
         <td class="nowrap">
           <div class="btn-group">
-            <button class="btn btn-outline btn-xs" onclick="App.editAccountProxy('${this.esc(a.id)}','${this.esc(a.email)}')">配置</button>
-            ${p ? `<button class="btn btn-ghost btn-xs" style="color:var(--error)" onclick="App.clearAccountProxy('${this.esc(a.id)}')">清除</button>` : ''}
+            <button class="btn btn-outline btn-xs" onclick="App.editAccountProxy('${this.escJsAttr(a.id)}','${this.escJsAttr(a.email)}')">配置</button>
+            ${p ? `<button class="btn btn-ghost btn-xs" style="color:var(--error)" onclick="App.clearAccountProxy('${this.escJsAttr(a.id)}')">清除</button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -2594,8 +2600,12 @@ const App = {
       host: document.getElementById('proxy-host').value.trim(),
       port: document.getElementById('proxy-port').value,
       username: document.getElementById('proxy-user').value,
-      password: document.getElementById('proxy-pass').value,
     };
+    // Only send the password field when the user actually typed something
+    // OR when there's no stored password yet — otherwise the server
+    // interprets the omission as "keep existing".
+    const pwInput = document.getElementById('proxy-pass').value;
+    if (pwInput || !this._globalProxyHasPassword) cfg.password = pwInput;
     if (!cfg.host) return this.toast('请输入代理主机', 'error');
     await this.api('PUT', '/proxy/global', cfg);
     this.toast('全局代理已保存');
@@ -2998,8 +3008,8 @@ const App = {
         <td class="text-sm">${a.lastUsed ? new Date(a.lastUsed).toLocaleString() : '-'}</td>
         <td class="nowrap">
           <div class="btn-group">
-            ${a.status === 'error' ? `<button class="btn btn-success btn-xs" onclick="App.toggleAccount('${this.esc(a.id)}','active');setTimeout(()=>App.loadBans(),500)">重新启用</button>` : ''}
-            ${a.errorCount > 0 ? `<button class="btn btn-outline btn-xs" onclick="App.resetErrors('${this.esc(a.id)}');setTimeout(()=>App.loadBans(),500)">重置错误</button>` : ''}
+            ${a.status === 'error' ? `<button class="btn btn-success btn-xs" onclick="App.toggleAccount('${this.escJsAttr(a.id)}','active');setTimeout(()=>App.loadBans(),500)">重新启用</button>` : ''}
+            ${a.errorCount > 0 ? `<button class="btn btn-outline btn-xs" onclick="App.resetErrors('${this.escJsAttr(a.id)}');setTimeout(()=>App.loadBans(),500)">重置错误</button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -3039,6 +3049,24 @@ const App = {
     }
   },
   esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); },
+  // For values interpolated into an inline `onclick="App.f('${...}')"`
+  // string: the HTML attribute parser will decode &#39; back to ', which
+  // then breaks out of the JS string literal. Do JS-level string escaping
+  // (backslashify quotes and brackets) instead of HTML entity encoding.
+  // Safe to place inside double-quoted onclick="..." because the output
+  // contains no unescaped " character.
+  escJsAttr(s) {
+    // U+2028 / U+2029 (JS line separators) are expressed as escape
+    // sequences below. A raw U+2028/2029 inside a regex literal is a
+    // line terminator and breaks the whole source file.
+    const map = {
+      "\\": "\\\\", "'": "\\'", "\"": "\\\"",
+      "<": "\\x3c", ">": "\\x3e", "&": "\\x26",
+      "\r": "\\r", "\n": "\\n",
+      "\u2028": "\\u2028", "\u2029": "\\u2029",
+    };
+    return String(s == null ? "" : s).replace(/[\\'"<>&\r\n\u2028\u2029]/g, c => map[c]);
+  },
 };
 
 window.addEventListener('DOMContentLoaded', () => App.init());

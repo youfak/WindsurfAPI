@@ -301,7 +301,7 @@ class AnthropicStreamTranslator {
 
 // ─── Fake ServerResponse that pipes writes into the translator ──
 
-function createCaptureRes(translator) {
+function createCaptureRes(translator, realRes) {
   const listeners = new Map();
   const fire = (event) => {
     const cbs = listeners.get(event) || [];
@@ -312,6 +312,16 @@ function createCaptureRes(translator) {
     headersSent: false,
     writeHead() { this.headersSent = true; },
     write(chunk) {
+      // chat.js writes SSE heartbeat comments (`: ping\n\n`) every 15s
+      // while Cascade is slow-polling its trajectory. The translator
+      // only parses `data:` lines, so pings are silently dropped —
+      // leaving the real Anthropic stream quiet for minutes until a
+      // CDN/proxy/client decides the connection is dead and bails. Pass
+      // heartbeat comments straight through so Claude Code stays happy.
+      const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (str.startsWith(':') && realRes && !realRes.writableEnded) {
+        try { realRes.write(str); } catch {}
+      }
       translator.feed(chunk);
       return true;
     },
@@ -406,7 +416,7 @@ export async function handleMessages(body) {
     },
     async handler(realRes) {
       const translator = new AnthropicStreamTranslator(realRes, msgId, requestedModel);
-      const captureRes = createCaptureRes(translator);
+      const captureRes = createCaptureRes(translator, realRes);
 
       // Forward client disconnect so the upstream cascade is cancelled.
       // We don't call captureRes.end() here — that would set writableEnded=true

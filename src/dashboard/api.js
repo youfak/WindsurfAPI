@@ -18,7 +18,7 @@ import { cacheStats, cacheClear } from '../cache.js';
 import { getExperimental, setExperimental, getIdentityPrompts, setIdentityPrompts, resetIdentityPrompt, DEFAULT_IDENTITY_PROMPTS } from '../runtime-config.js';
 import { poolStats as convPoolStats, poolClear as convPoolClear } from '../conversation-pool.js';
 import { getLogs, subscribeToLogs, unsubscribeFromLogs } from './logger.js';
-import { getProxyConfig, setGlobalProxy, setAccountProxy, removeProxy, getEffectiveProxy } from './proxy-config.js';
+import { getProxyConfig, getProxyConfigMasked, setGlobalProxy, setAccountProxy, removeProxy, getEffectiveProxy } from './proxy-config.js';
 import { MODELS, MODEL_TIER_ACCESS as _TIER_TABLE, getTierModels as _getTierModels } from '../models.js';
 import { windsurfLogin, refreshFirebaseToken, reRegisterWithCodeium } from './windsurf-login.js';
 import { getModelAccessConfig, setModelAccessMode, setModelAccessList, addModelToList, removeModelFromList } from './model-access.js';
@@ -357,13 +357,17 @@ export async function handleDashboardApi(method, subpath, body, req, res) {
   }
 
   // ─── Proxy ────────────────────────────────────────────
+  // Always return the masked view over the API — plaintext passwords
+  // would otherwise end up in dashboard network logs, HAR files, proxy
+  // access logs, etc. The UI posts the sentinel back to preserve the
+  // stored password when editing other fields (see mergePassword).
   if (subpath === '/proxy' && method === 'GET') {
-    return json(res, 200, getProxyConfig());
+    return json(res, 200, getProxyConfigMasked());
   }
 
   if (subpath === '/proxy/global' && method === 'PUT') {
     setGlobalProxy(body);
-    return json(res, 200, { success: true, config: getProxyConfig() });
+    return json(res, 200, { success: true, config: getProxyConfigMasked() });
   }
 
   if (subpath === '/proxy/global' && method === 'DELETE') {

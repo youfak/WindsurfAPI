@@ -31,8 +31,37 @@ function save() {
   }
 }
 
+// Passwords never leave the server. The masked view returns
+// `hasPassword: boolean` in place of the plaintext. When the dashboard
+// PUTs a config back it omits the `password` key if the user didn't
+// retype it, which mergePassword() treats as "keep the stored value".
+// An explicit empty string still clears the password.
+function maskProxy(p) {
+  if (!p) return p;
+  const { password, ...rest } = p;
+  return { ...rest, hasPassword: !!password };
+}
+
+function mergePassword(newCfg, oldCfg) {
+  if (!newCfg || !Object.prototype.hasOwnProperty.call(newCfg, 'password')) {
+    return oldCfg?.password || '';
+  }
+  return newCfg.password || '';
+}
+
+/** Full config including plaintext passwords — internal callers only. */
 export function getProxyConfig() {
   return { ..._config };
+}
+
+/** Safe shape for dashboard / API consumers. */
+export function getProxyConfigMasked() {
+  return {
+    global: maskProxy(_config.global),
+    perAccount: Object.fromEntries(
+      Object.entries(_config.perAccount).map(([k, v]) => [k, maskProxy(v)])
+    ),
+  };
 }
 
 export function setGlobalProxy(cfg) {
@@ -41,7 +70,7 @@ export function setGlobalProxy(cfg) {
     host: cfg.host,
     port: parseInt(cfg.port, 10) || 8080,
     username: cfg.username || '',
-    password: cfg.password || '',
+    password: mergePassword(cfg, _config.global),
   } : null;
   save();
 }
@@ -53,7 +82,7 @@ export function setAccountProxy(accountId, cfg) {
       host: cfg.host,
       port: parseInt(cfg.port, 10) || 8080,
       username: cfg.username || '',
-      password: cfg.password || '',
+      password: mergePassword(cfg, _config.perAccount[accountId]),
     };
   } else {
     delete _config.perAccount[accountId];

@@ -45,28 +45,31 @@ function pruneRpmHistory(account, now) {
 // together; without a mutex the last writer wins on stale memory state.
 let _saveInFlight = false;
 let _savePending = false;
+function _serializeAccounts() {
+  return accounts.map(a => ({
+    id: a.id, email: a.email, apiKey: a.apiKey,
+    apiServerUrl: a.apiServerUrl, method: a.method,
+    status: a.status, addedAt: a.addedAt,
+    tier: a.tier, tierManual: !!a.tierManual,
+    capabilities: a.capabilities, lastProbed: a.lastProbed,
+    credits: a.credits || null,
+    blockedModels: a.blockedModels || [],
+    refreshToken: a.refreshToken || '',
+    // From GetUserStatus — the authoritative tier/entitlement snapshot.
+    userStatus: a.userStatus || null,
+    userStatusLastFetched: a.userStatusLastFetched || 0,
+  }));
+}
+
 function saveAccounts() {
   if (_saveInFlight) { _savePending = true; return; }
   _saveInFlight = true;
   const tempFile = ACCOUNTS_FILE + '.tmp';
   try {
-    const data = accounts.map(a => ({
-      id: a.id, email: a.email, apiKey: a.apiKey,
-      apiServerUrl: a.apiServerUrl, method: a.method,
-      status: a.status, addedAt: a.addedAt,
-      tier: a.tier, tierManual: !!a.tierManual,
-      capabilities: a.capabilities, lastProbed: a.lastProbed,
-      credits: a.credits || null,
-      blockedModels: a.blockedModels || [],
-      refreshToken: a.refreshToken || '',
-      // From GetUserStatus — the authoritative tier/entitlement snapshot.
-      userStatus: a.userStatus || null,
-      userStatusLastFetched: a.userStatusLastFetched || 0,
-    }));
     // Atomic write: write to .tmp then rename so a crash mid-write can't
     // leave accounts.json truncated/corrupt. Node's renameSync is atomic
     // on POSIX and replaces the target on Windows (fs.rename behavior).
-    writeFileSync(tempFile, JSON.stringify(data, null, 2));
+    writeFileSync(tempFile, JSON.stringify(_serializeAccounts(), null, 2));
     renameSync(tempFile, ACCOUNTS_FILE);
   } catch (e) {
     log.error('Failed to save accounts:', e.message);
@@ -74,6 +77,24 @@ function saveAccounts() {
   } finally {
     _saveInFlight = false;
     if (_savePending) { _savePending = false; setImmediate(saveAccounts); }
+  }
+}
+
+/**
+ * Synchronous last-resort flush for the shutdown path. Bypasses the
+ * _saveInFlight mutex (any queued async save would be killed by
+ * process.exit before it finished anyway). Tolerates being called after
+ * an in-flight save — the rename on top of a partial temp file is still
+ * atomic.
+ */
+export function saveAccountsSync() {
+  const tempFile = ACCOUNTS_FILE + '.shutdown.tmp';
+  try {
+    writeFileSync(tempFile, JSON.stringify(_serializeAccounts(), null, 2));
+    renameSync(tempFile, ACCOUNTS_FILE);
+  } catch (e) {
+    log.error('Shutdown: failed to flush accounts:', e.message);
+    try { unlinkSync(tempFile); } catch {}
   }
 }
 
